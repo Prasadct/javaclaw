@@ -19,17 +19,23 @@ import java.util.List;
 public class AgentRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(AgentRuntime.class);
-    private static final int MAX_ITERATIONS = 10;
+    private static final int DEFAULT_MAX_STEPS = 10;
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final ChatClient chatClient;
     private final ToolRegistry toolRegistry;
     private final PolicyEngine policyEngine;
+    private final int maxSteps;
 
     public AgentRuntime(ChatClient chatClient, ToolRegistry toolRegistry, PolicyEngine policyEngine) {
+        this(chatClient, toolRegistry, policyEngine, DEFAULT_MAX_STEPS);
+    }
+
+    public AgentRuntime(ChatClient chatClient, ToolRegistry toolRegistry, PolicyEngine policyEngine, int maxSteps) {
         this.chatClient = chatClient;
         this.toolRegistry = toolRegistry;
         this.policyEngine = policyEngine;
+        this.maxSteps = maxSteps;
     }
 
     public AgentTask execute(AgentDefinition agent, String goal) {
@@ -42,8 +48,8 @@ public class AgentRuntime {
         List<String> conversationHistory = new ArrayList<>();
         conversationHistory.add("Goal: " + goal);
 
-        for (int i = 0; i < MAX_ITERATIONS; i++) {
-            log.debug("Iteration {}/{} for task {}", i + 1, MAX_ITERATIONS, task.getId());
+        for (int i = 0; i < maxSteps; i++) {
+            log.debug("Iteration {}/{} for task {}", i + 1, maxSteps, task.getId());
 
             String userMessage = String.join("\n", conversationHistory);
             String llmResponse;
@@ -156,10 +162,10 @@ public class AgentRuntime {
         }
 
         // Max iterations reached
-        log.warn("Task {} reached max iterations ({})", task.getId(), MAX_ITERATIONS);
+        log.warn("Task {} reached max iterations ({})", task.getId(), maxSteps);
         task.setStatus(TaskStatus.FAILED);
-        task.setResult("Max iterations (" + MAX_ITERATIONS + ") reached without completion");
-        task.addAuditEvent(AuditEvent.of("MAX_ITERATIONS", "Reached " + MAX_ITERATIONS + " iterations"));
+        task.setResult("Max iterations (" + maxSteps + ") reached without completion");
+        task.addAuditEvent(AuditEvent.of("MAX_ITERATIONS", "Reached " + maxSteps + " iterations"));
         return task;
     }
 

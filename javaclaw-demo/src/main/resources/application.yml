@@ -1,0 +1,16 @@
+server:
+  port: 8080
+
+spring:
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:sk-placeholder}
+      chat:
+        options:
+          model: gpt-4o
+          temperature: 0.2
+
+javaclaw:
+  max-steps: 10
+  tools:
+    base-directory: ./sample-repo
