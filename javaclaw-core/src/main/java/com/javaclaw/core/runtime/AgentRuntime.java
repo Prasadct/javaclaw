@@ -2,6 +2,10 @@ package com.javaclaw.core.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javaclaw.core.approval.ApprovalHandler;
+import com.javaclaw.core.approval.ApprovalRequest;
+import com.javaclaw.core.approval.ApprovalResult;
+import com.javaclaw.core.approval.AutoApprovalHandler;
 import com.javaclaw.core.model.AgentDefinition;
 import com.javaclaw.core.model.AgentTask;
 import com.javaclaw.core.model.AuditEvent;
@@ -25,21 +29,28 @@ public class AgentRuntime {
     private final ChatClient chatClient;
     private final ToolRegistry toolRegistry;
     private final PolicyEngine policyEngine;
+    private final ApprovalHandler approvalHandler;
     private final int maxSteps;
 
     public AgentRuntime(ChatClient chatClient, ToolRegistry toolRegistry, PolicyEngine policyEngine) {
-        this(chatClient, toolRegistry, policyEngine, DEFAULT_MAX_STEPS);
+        this(chatClient, toolRegistry, policyEngine, new AutoApprovalHandler(), DEFAULT_MAX_STEPS);
     }
 
     public AgentRuntime(ChatClient chatClient, ToolRegistry toolRegistry, PolicyEngine policyEngine, int maxSteps) {
+        this(chatClient, toolRegistry, policyEngine, new AutoApprovalHandler(), maxSteps);
+    }
+
+    public AgentRuntime(ChatClient chatClient, ToolRegistry toolRegistry, PolicyEngine policyEngine,
+                        ApprovalHandler approvalHandler, int maxSteps) {
         this.chatClient = chatClient;
         this.toolRegistry = toolRegistry;
         this.policyEngine = policyEngine;
+        this.approvalHandler = approvalHandler;
         this.maxSteps = maxSteps;
     }
 
-    public AgentTask execute(AgentDefinition agent, String goal) {
-        var task = new AgentTask(goal);
+    public AgentTask execute(AgentDefinition agent, AgentTask task) {
+        String goal = task.getGoal();
         task.addAuditEvent(AuditEvent.of("TASK_CREATED", "Goal: " + goal));
         task.setStatus(TaskStatus.RUNNING);
         task.addAuditEvent(AuditEvent.of("TASK_STARTED", "Agent: " + agent.name()));
@@ -130,12 +141,30 @@ public class AgentRuntime {
                 }
                 case REQUIRE_APPROVAL -> {
                     task.setStatus(TaskStatus.WAITING_FOR_APPROVAL);
-                    task.addAuditEvent(AuditEvent.of("APPROVAL_REQUIRED",
+                    var approvalRequest = new ApprovalRequest(
+                            task.getId(), goal, action, input,
+                            tool.riskLevel(),
+                            "Policy requires approval for tool '" + action + "'"
+                    );
+                    task.addAuditEvent(AuditEvent.of("APPROVAL_REQUESTED",
                             "Tool " + action + " requires approval"));
-                    log.info("Tool '{}' requires approval — auto-approving for now", action);
-                    // Auto-approve for now; real approval will be added later
-                    task.setStatus(TaskStatus.RUNNING);
-                    task.addAuditEvent(AuditEvent.of("AUTO_APPROVED", "Tool " + action + " auto-approved"));
+                    log.info("Tool '{}' requires approval — waiting for human decision", action);
+
+                    ApprovalResult approvalResult = approvalHandler.handle(approvalRequest);
+
+                    if (approvalResult.approved()) {
+                        task.addAuditEvent(AuditEvent.of("APPROVAL_GRANTED",
+                                "Tool " + action + " approved: " + approvalResult.reason()));
+                        task.setStatus(TaskStatus.RUNNING);
+                        log.info("Tool '{}' approved: {}", action, approvalResult.reason());
+                    } else {
+                        task.addAuditEvent(AuditEvent.of("APPROVAL_REJECTED",
+                                "Tool " + action + " rejected: " + approvalResult.reason()));
+                        task.setStatus(TaskStatus.CANCELLED);
+                        task.setResult("Approval rejected for tool '" + action + "': " + approvalResult.reason());
+                        log.info("Tool '{}' rejected: {}", action, approvalResult.reason());
+                        return task;
+                    }
                 }
                 case ALLOW -> {
                     // proceed

@@ -1,5 +1,7 @@
 package com.javaclaw.demo;
 
+import com.javaclaw.core.approval.ApprovalHandler;
+import com.javaclaw.core.approval.AsyncApprovalHandler;
 import com.javaclaw.core.model.AgentDefinition;
 import com.javaclaw.core.model.RiskLevel;
 import com.javaclaw.core.model.ToolDefinition;
@@ -65,5 +67,15 @@ public class DemoAgentConfig {
             }
             return PolicyDecision.ALLOW;
         };
+    }
+
+    @Bean
+    public AsyncApprovalHandler asyncApprovalHandler(JavaclawProperties properties) {
+        return new AsyncApprovalHandler(properties.getApproval().getTimeoutSeconds());
+    }
+
+    @Bean
+    public ApprovalHandler approvalHandler(AsyncApprovalHandler asyncApprovalHandler) {
+        return asyncApprovalHandler;
     }
 }

@@ -43,27 +43,128 @@ curl -s http://localhost:8080/api/agent/task \
   -d '{"goal": "Find the bug in UserService that causes null pointer exceptions"}' | jq .
 ```
 
-## Example output
+## REST API
+
+All endpoints are under `/api/agent`.
+
+### Start a task
+
+```bash
+curl -s http://localhost:8080/api/agent/task \
+  -H "Content-Type: application/json" \
+  -d '{"goal": "Find the bug in UserService"}' | jq .
+```
+
+Response — the task starts running asynchronously:
+
+```json
+{
+  "taskId": "a3f1c2d4-...",
+  "status": "CREATED",
+  "goal": "Find the bug in UserService"
+}
+```
+
+### Poll task status
+
+```bash
+curl -s http://localhost:8080/api/agent/task/{taskId} | jq .
+```
+
+When the task is running or completed, you get the full task with audit trail:
 
 ```json
 {
   "id": "a3f1c2d4-...",
-  "goal": "Find the bug in UserService that causes null pointer exceptions",
+  "goal": "Find the bug in UserService",
   "status": "COMPLETED",
-  "result": "The bug is in UserService.getUserCity() — it calls getUser(userId) which returns null when the user doesn't exist, then immediately calls .getAddress().getCity() on the null reference. Fix: add a null check on the user before accessing the address.",
+  "result": "The bug is in UserService.getUserCity() — ...",
   "auditTrail": [
     { "type": "TASK_CREATED",   "detail": "Goal: Find the bug in UserService..." },
     { "type": "TASK_STARTED",   "detail": "Agent: bugfix-assistant" },
-    { "type": "LLM_RESPONSE",   "detail": "{\"thought\": \"I should search for UserService...\", ...}" },
-    { "type": "THOUGHT",        "detail": "I should search for UserService to find the relevant file" },
     { "type": "POLICY_CHECK",   "detail": "tool=search_code decision=ALLOW" },
     { "type": "TOOL_EXECUTED",  "detail": "tool=search_code result=Found 3 match(es)..." },
-    { "type": "THOUGHT",        "detail": "Let me read UserService.java to examine the code" },
-    { "type": "POLICY_CHECK",   "detail": "tool=read_file decision=ALLOW" },
-    { "type": "TOOL_EXECUTED",  "detail": "tool=read_file result=package com.example;..." },
     { "type": "TASK_COMPLETED", "detail": "The bug is in UserService.getUserCity()..." }
   ]
 }
+```
+
+When the task is waiting for approval, the response includes `pendingApproval` details inline — no need to call a separate endpoint:
+
+```json
+{
+  "id": "a3f1c2d4-...",
+  "goal": "Delete old log files",
+  "status": "WAITING_FOR_APPROVAL",
+  "result": null,
+  "auditTrail": [ "..." ],
+  "pendingApproval": {
+    "toolName": "run_command",
+    "toolInput": "rm -rf /var/log/old/*.log",
+    "riskLevel": "HIGH",
+    "reason": "Policy requires approval for tool 'run_command'"
+  }
+}
+```
+
+### Approve or reject a pending action
+
+```bash
+# Approve
+curl -s http://localhost:8080/api/agent/task/{taskId}/approve \
+  -H "Content-Type: application/json" \
+  -d '{"approved": true, "reason": "Looks safe"}' | jq .
+
+# Reject
+curl -s http://localhost:8080/api/agent/task/{taskId}/approve \
+  -H "Content-Type: application/json" \
+  -d '{"approved": false, "reason": "Too risky"}' | jq .
+```
+
+Response:
+
+```json
+{
+  "taskId": "a3f1c2d4-...",
+  "submitted": true,
+  "approved": true
+}
+```
+
+After approval, the task resumes automatically. After rejection, the task moves to `CANCELLED`.
+
+### List all tasks
+
+```bash
+curl -s http://localhost:8080/api/agent/tasks | jq .
+```
+
+### List pending approvals
+
+```bash
+curl -s http://localhost:8080/api/agent/approvals/pending | jq .
+```
+
+### Typical approval workflow
+
+```bash
+# 1. Start a task that will trigger a high-risk tool
+TASK_ID=$(curl -s http://localhost:8080/api/agent/task \
+  -H "Content-Type: application/json" \
+  -d '{"goal": "Clean up old temp files"}' | jq -r .taskId)
+
+# 2. Poll until the task needs approval
+curl -s http://localhost:8080/api/agent/task/$TASK_ID | jq .
+# → status: "WAITING_FOR_APPROVAL", pendingApproval: { toolName: "run_command", ... }
+
+# 3. Review and approve
+curl -s http://localhost:8080/api/agent/task/$TASK_ID/approve \
+  -H "Content-Type: application/json" \
+  -d '{"approved": true, "reason": "Verified the command is safe"}' | jq .
+
+# 4. Poll again — task completes
+curl -s http://localhost:8080/api/agent/task/$TASK_ID | jq .
+# → status: "COMPLETED"
 ```
 
 ## Architecture

@@ -1,5 +1,7 @@
 package com.javaclaw.core.runtime;
 
+import com.javaclaw.core.approval.ApprovalHandler;
+import com.javaclaw.core.approval.ApprovalResult;
 import com.javaclaw.core.model.AgentDefinition;
 import com.javaclaw.core.model.AgentTask;
 import com.javaclaw.core.model.TaskStatus;
@@ -54,7 +56,7 @@ class AgentRuntimeTest {
         });
 
         var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
-        AgentTask task = runtime.execute(agent, "Find the answer");
+        AgentTask task = runtime.execute(agent, new AgentTask("Find the answer"));
 
         assertThat(task.getStatus()).isEqualTo(TaskStatus.COMPLETED);
         assertThat(task.getResult()).isEqualTo("The answer is result-for-key1");
@@ -81,7 +83,7 @@ class AgentRuntimeTest {
                 """);
 
         var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
-        AgentTask task = runtime.execute(agent, "Do something dangerous");
+        AgentTask task = runtime.execute(agent, new AgentTask("Do something dangerous"));
 
         assertThat(task.getStatus()).isEqualTo(TaskStatus.FAILED);
         assertThat(task.getResult()).contains("Policy denied");
@@ -110,14 +112,42 @@ class AgentRuntimeTest {
             }
         });
 
+        // Uses default 3-arg constructor which delegates to AutoApprovalHandler
         var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
-        AgentTask task = runtime.execute(agent, "Run sensitive operation");
+        AgentTask task = runtime.execute(agent, new AgentTask("Run sensitive operation"));
 
         assertThat(task.getStatus()).isEqualTo(TaskStatus.COMPLETED);
         assertThat(task.getResult()).isEqualTo("Operation completed");
 
         var eventTypes = task.getAuditTrail().stream().map(e -> e.type()).toList();
-        assertThat(eventTypes).contains("APPROVAL_REQUIRED", "AUTO_APPROVED", "TOOL_EXECUTED");
+        assertThat(eventTypes).contains("APPROVAL_REQUESTED", "APPROVAL_GRANTED", "TOOL_EXECUTED");
+    }
+
+    @Test
+    void approvalRejected_taskCancelled() {
+        toolRegistry.register(new ToolDefinition("sensitive", "Sensitive operation", input -> "should not run"));
+
+        when(policyEngine.evaluate(any(), eq("sensitive"), any())).thenReturn(PolicyDecision.REQUIRE_APPROVAL);
+
+        ChatClient chatClient = mockChatClient(() ->
+                """
+                {"thought": "Running sensitive op", "action": "sensitive", "input": "data"}
+                """);
+
+        // Mock handler that rejects
+        ApprovalHandler rejectHandler = mock(ApprovalHandler.class);
+        when(rejectHandler.handle(any())).thenReturn(ApprovalResult.rejected("Too risky"));
+
+        var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine, rejectHandler, 10);
+        AgentTask task = runtime.execute(agent, new AgentTask("Run sensitive operation"));
+
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.CANCELLED);
+        assertThat(task.getResult()).contains("Approval rejected");
+        assertThat(task.getResult()).contains("Too risky");
+
+        var eventTypes = task.getAuditTrail().stream().map(e -> e.type()).toList();
+        assertThat(eventTypes).contains("APPROVAL_REQUESTED", "APPROVAL_REJECTED");
+        assertThat(eventTypes).doesNotContain("TOOL_EXECUTED");
     }
 
     @Test
@@ -131,7 +161,7 @@ class AgentRuntimeTest {
                 """);
 
         var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
-        AgentTask task = runtime.execute(agent, "Use unknown tool");
+        AgentTask task = runtime.execute(agent, new AgentTask("Use unknown tool"));
 
         assertThat(task.getStatus()).isEqualTo(TaskStatus.FAILED);
         assertThat(task.getResult()).contains("Unknown tool");
@@ -144,7 +174,7 @@ class AgentRuntimeTest {
         ChatClient chatClient = mockChatClient(() -> "this is not json at all");
 
         var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
-        AgentTask task = runtime.execute(agent, "Bad response");
+        AgentTask task = runtime.execute(agent, new AgentTask("Bad response"));
 
         assertThat(task.getStatus()).isEqualTo(TaskStatus.FAILED);
         assertThat(task.getResult()).contains("Failed to parse");

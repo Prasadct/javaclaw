@@ -14,3 +14,5 @@ javaclaw:
   max-steps: 10
   tools:
     base-directory: ./sample-repo
+  approval:
+    timeout-seconds: 300

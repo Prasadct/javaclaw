@@ -1,5 +1,7 @@
 package com.javaclaw.core.spring;
 
+import com.javaclaw.core.approval.ApprovalHandler;
+import com.javaclaw.core.approval.CLIApprovalHandler;
 import com.javaclaw.core.model.AgentDefinition;
 import com.javaclaw.core.model.RiskLevel;
 import com.javaclaw.core.model.ToolDefinition;
@@ -44,12 +46,19 @@ public class JavaclawAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(ApprovalHandler.class)
+    public ApprovalHandler approvalHandler(JavaclawProperties properties) {
+        return new CLIApprovalHandler(properties.getApproval().getTimeoutSeconds());
+    }
+
+    @Bean
     @ConditionalOnMissingBean
     public AgentRuntime agentRuntime(ChatClient.Builder chatClientBuilder,
                                      ToolRegistry toolRegistry,
                                      PolicyEngine policyEngine,
+                                     ApprovalHandler approvalHandler,
                                      JavaclawProperties properties) {
         ChatClient chatClient = chatClientBuilder.build();
-        return new AgentRuntime(chatClient, toolRegistry, policyEngine, properties.getMaxSteps());
+        return new AgentRuntime(chatClient, toolRegistry, policyEngine, approvalHandler, properties.getMaxSteps());
     }
 }
