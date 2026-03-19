@@ -1,1 +1,2 @@
 com.javaclaw.core.spring.JavaclawAutoConfiguration
+com.javaclaw.core.spring.SlackAutoConfiguration

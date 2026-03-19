@@ -8,6 +8,7 @@ public class JavaclawProperties {
     private ToolsProperties tools = new ToolsProperties();
     private int maxSteps = 10;
     private ApprovalProperties approval = new ApprovalProperties();
+    private SlackProperties slack = new SlackProperties();
 
     public ToolsProperties getTools() {
         return tools;
@@ -33,6 +34,14 @@ public class JavaclawProperties {
         this.approval = approval;
     }
 
+    public SlackProperties getSlack() {
+        return slack;
+    }
+
+    public void setSlack(SlackProperties slack) {
+        this.slack = slack;
+    }
+
     public static class ToolsProperties {
         private String baseDirectory = ".";
 
@@ -54,6 +63,36 @@ public class JavaclawProperties {
 
         public void setTimeoutSeconds(int timeoutSeconds) {
             this.timeoutSeconds = timeoutSeconds;
+        }
+    }
+
+    public static class SlackProperties {
+        private boolean enabled = false;
+        private String botToken;
+        private String appToken;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getBotToken() {
+            return botToken;
+        }
+
+        public void setBotToken(String botToken) {
+            this.botToken = botToken;
+        }
+
+        public String getAppToken() {
+            return appToken;
+        }
+
+        public void setAppToken(String appToken) {
+            this.appToken = appToken;
         }
     }
 }

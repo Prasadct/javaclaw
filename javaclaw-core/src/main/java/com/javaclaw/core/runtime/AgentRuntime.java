@@ -6,6 +6,7 @@ import com.javaclaw.core.approval.ApprovalHandler;
 import com.javaclaw.core.approval.ApprovalRequest;
 import com.javaclaw.core.approval.ApprovalResult;
 import com.javaclaw.core.approval.AutoApprovalHandler;
+import com.javaclaw.core.channel.TaskProgressListener;
 import com.javaclaw.core.model.AgentDefinition;
 import com.javaclaw.core.model.AgentTask;
 import com.javaclaw.core.model.AuditEvent;
@@ -19,6 +20,7 @@ import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class AgentRuntime {
 
@@ -50,10 +52,15 @@ public class AgentRuntime {
     }
 
     public AgentTask execute(AgentDefinition agent, AgentTask task) {
+        return execute(agent, task, null);
+    }
+
+    public AgentTask execute(AgentDefinition agent, AgentTask task, TaskProgressListener listener) {
         String goal = task.getGoal();
         task.addAuditEvent(AuditEvent.of("TASK_CREATED", "Goal: " + goal));
         task.setStatus(TaskStatus.RUNNING);
         task.addAuditEvent(AuditEvent.of("TASK_STARTED", "Agent: " + agent.name()));
+        notifyListener(listener, l -> l.onTaskStarted(task));
 
         String systemPrompt = buildSystemPrompt(agent);
         List<String> conversationHistory = new ArrayList<>();
@@ -75,6 +82,7 @@ public class AgentRuntime {
                 task.setStatus(TaskStatus.FAILED);
                 task.setResult("LLM call failed: " + e.getMessage());
                 task.addAuditEvent(AuditEvent.of("LLM_ERROR", e.getMessage()));
+                notifyListener(listener, l -> l.onTaskFailed(task, task.getResult()));
                 return task;
             }
 
@@ -83,6 +91,7 @@ public class AgentRuntime {
                 task.setStatus(TaskStatus.FAILED);
                 task.setResult("Empty response from LLM");
                 task.addAuditEvent(AuditEvent.of("LLM_ERROR", "Empty response"));
+                notifyListener(listener, l -> l.onTaskFailed(task, task.getResult()));
                 return task;
             }
 
@@ -96,6 +105,7 @@ public class AgentRuntime {
                 task.setStatus(TaskStatus.FAILED);
                 task.setResult("Failed to parse LLM response: " + e.getMessage());
                 task.addAuditEvent(AuditEvent.of("PARSE_ERROR", e.getMessage()));
+                notifyListener(listener, l -> l.onTaskFailed(task, task.getResult()));
                 return task;
             }
 
@@ -111,8 +121,11 @@ public class AgentRuntime {
                 task.setResult(input);
                 task.addAuditEvent(AuditEvent.of("TASK_COMPLETED", input));
                 log.info("Task {} completed: {}", task.getId(), input);
+                notifyListener(listener, l -> l.onTaskCompleted(task));
                 return task;
             }
+
+            notifyListener(listener, l -> l.onToolRequested(task, action, input));
 
             // Look up tool
             var toolOpt = toolRegistry.get(action);
@@ -121,6 +134,7 @@ public class AgentRuntime {
                 task.setStatus(TaskStatus.FAILED);
                 task.setResult("Unknown tool: " + action);
                 task.addAuditEvent(AuditEvent.of("UNKNOWN_TOOL", action));
+                notifyListener(listener, l -> l.onTaskFailed(task, task.getResult()));
                 return task;
             }
 
@@ -130,6 +144,7 @@ public class AgentRuntime {
             PolicyDecision decision = policyEngine.evaluate(agent, action, input);
             task.addAuditEvent(AuditEvent.of("POLICY_CHECK", "tool=" + action + " decision=" + decision));
             log.info("Policy decision for tool '{}': {}", action, decision);
+            notifyListener(listener, l -> l.onPolicyChecked(task, action, decision));
 
             switch (decision) {
                 case DENY -> {
@@ -137,6 +152,7 @@ public class AgentRuntime {
                     task.setResult("Policy denied tool: " + action);
                     task.addAuditEvent(AuditEvent.of("POLICY_DENIED", "Tool " + action + " denied by policy"));
                     log.warn("Tool '{}' denied by policy", action);
+                    notifyListener(listener, l -> l.onTaskFailed(task, task.getResult()));
                     return task;
                 }
                 case REQUIRE_APPROVAL -> {
@@ -149,6 +165,7 @@ public class AgentRuntime {
                     task.addAuditEvent(AuditEvent.of("APPROVAL_REQUESTED",
                             "Tool " + action + " requires approval"));
                     log.info("Tool '{}' requires approval — waiting for human decision", action);
+                    notifyListener(listener, l -> l.onApprovalRequested(task, approvalRequest));
 
                     ApprovalResult approvalResult = approvalHandler.handle(approvalRequest);
 
@@ -157,12 +174,15 @@ public class AgentRuntime {
                                 "Tool " + action + " approved: " + approvalResult.reason()));
                         task.setStatus(TaskStatus.RUNNING);
                         log.info("Tool '{}' approved: {}", action, approvalResult.reason());
+                        notifyListener(listener, l -> l.onApprovalDecision(task, approvalResult));
                     } else {
                         task.addAuditEvent(AuditEvent.of("APPROVAL_REJECTED",
                                 "Tool " + action + " rejected: " + approvalResult.reason()));
                         task.setStatus(TaskStatus.CANCELLED);
                         task.setResult("Approval rejected for tool '" + action + "': " + approvalResult.reason());
                         log.info("Tool '{}' rejected: {}", action, approvalResult.reason());
+                        notifyListener(listener, l -> l.onApprovalDecision(task, approvalResult));
+                        notifyListener(listener, l -> l.onTaskFailed(task, task.getResult()));
                         return task;
                     }
                 }
@@ -178,12 +198,14 @@ public class AgentRuntime {
                 task.addAuditEvent(AuditEvent.of("TOOL_EXECUTED",
                         "tool=" + action + " result=" + toolResult));
                 log.info("Tool '{}' executed successfully", action);
+                notifyListener(listener, l -> l.onToolExecuted(task, action, toolResult));
             } catch (Exception e) {
                 log.error("Tool '{}' execution failed: {}", action, e.getMessage(), e);
                 task.setStatus(TaskStatus.FAILED);
                 task.setResult("Tool execution failed: " + e.getMessage());
                 task.addAuditEvent(AuditEvent.of("TOOL_ERROR",
                         "tool=" + action + " error=" + e.getMessage()));
+                notifyListener(listener, l -> l.onTaskFailed(task, task.getResult()));
                 return task;
             }
 
@@ -195,7 +217,18 @@ public class AgentRuntime {
         task.setStatus(TaskStatus.FAILED);
         task.setResult("Max iterations (" + maxSteps + ") reached without completion");
         task.addAuditEvent(AuditEvent.of("MAX_ITERATIONS", "Reached " + maxSteps + " iterations"));
+        notifyListener(listener, l -> l.onTaskFailed(task, task.getResult()));
         return task;
+    }
+
+    private void notifyListener(TaskProgressListener listener, Consumer<TaskProgressListener> callback) {
+        if (listener != null) {
+            try {
+                callback.accept(listener);
+            } catch (Exception e) {
+                log.warn("Listener callback failed: {}", e.getMessage(), e);
+            }
+        }
     }
 
     private String buildSystemPrompt(AgentDefinition agent) {

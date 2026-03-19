@@ -16,3 +16,13 @@ javaclaw:
     base-directory: ./sample-repo
   approval:
     timeout-seconds: 300
+  slack:
+    enabled: true  # Set to true to enable Slack bot
+    bot-token: ${SLACK_BOT_TOKEN:}
+    app-token: ${SLACK_APP_TOKEN:}
+    # Setup: api.slack.com/apps → Create New App → From Scratch
+    # 1. Enable Socket Mode → generate App-Level Token (xapp-...)
+    # 2. OAuth & Permissions → scopes: chat:write, app_mentions:read, im:read, im:write, im:history
+    # 3. Event Subscriptions → subscribe to: app_mention, message.im
+    # 4. Interactivity → Enable (no URL needed for Socket Mode)
+    # 5. Install to Workspace → copy Bot Token (xoxb-...)

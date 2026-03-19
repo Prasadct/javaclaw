@@ -2,6 +2,7 @@ package com.javaclaw.core.runtime;
 
 import com.javaclaw.core.approval.ApprovalHandler;
 import com.javaclaw.core.approval.ApprovalResult;
+import com.javaclaw.core.channel.TaskProgressListener;
 import com.javaclaw.core.model.AgentDefinition;
 import com.javaclaw.core.model.AgentTask;
 import com.javaclaw.core.model.TaskStatus;
@@ -10,6 +11,7 @@ import com.javaclaw.core.policy.PolicyDecision;
 import com.javaclaw.core.policy.PolicyEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.List;
@@ -178,6 +180,95 @@ class AgentRuntimeTest {
 
         assertThat(task.getStatus()).isEqualTo(TaskStatus.FAILED);
         assertThat(task.getResult()).contains("Failed to parse");
+    }
+
+    @Test
+    void execute_withListener_callsAllCallbacks() {
+        toolRegistry.register(new ToolDefinition("lookup", "Looks up data", input -> "result-for-" + input));
+        when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
+
+        var callCounter = new AtomicInteger(0);
+        ChatClient chatClient = mockChatClient(() -> {
+            int call = callCounter.getAndIncrement();
+            if (call == 0) {
+                return """
+                        {"thought": "Looking up", "action": "lookup", "input": "key1"}
+                        """;
+            } else {
+                return """
+                        {"thought": "Done", "action": "finish", "input": "Found it"}
+                        """;
+            }
+        });
+
+        TaskProgressListener listener = mock(TaskProgressListener.class);
+        var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
+        AgentTask task = runtime.execute(agent, new AgentTask("Find something"), listener);
+
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.COMPLETED);
+
+        InOrder inOrder = inOrder(listener);
+        inOrder.verify(listener).onTaskStarted(any());
+        inOrder.verify(listener).onToolRequested(any(), eq("lookup"), eq("key1"));
+        inOrder.verify(listener).onPolicyChecked(any(), eq("lookup"), eq(PolicyDecision.ALLOW));
+        inOrder.verify(listener).onToolExecuted(any(), eq("lookup"), eq("result-for-key1"));
+        inOrder.verify(listener).onTaskCompleted(any());
+    }
+
+    @Test
+    void execute_withNullListener_worksNormally() {
+        toolRegistry.register(new ToolDefinition("lookup", "Looks up data", input -> "result"));
+        when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
+
+        var callCounter = new AtomicInteger(0);
+        ChatClient chatClient = mockChatClient(() -> {
+            int call = callCounter.getAndIncrement();
+            if (call == 0) {
+                return """
+                        {"thought": "Looking up", "action": "lookup", "input": "key1"}
+                        """;
+            } else {
+                return """
+                        {"thought": "Done", "action": "finish", "input": "Found it"}
+                        """;
+            }
+        });
+
+        var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
+        AgentTask task = runtime.execute(agent, new AgentTask("Find something"), null);
+
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.COMPLETED);
+        assertThat(task.getResult()).isEqualTo("Found it");
+    }
+
+    @Test
+    void execute_listenerException_doesNotBreakRuntime() {
+        toolRegistry.register(new ToolDefinition("lookup", "Looks up data", input -> "result"));
+        when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
+
+        var callCounter = new AtomicInteger(0);
+        ChatClient chatClient = mockChatClient(() -> {
+            int call = callCounter.getAndIncrement();
+            if (call == 0) {
+                return """
+                        {"thought": "Looking up", "action": "lookup", "input": "key1"}
+                        """;
+            } else {
+                return """
+                        {"thought": "Done", "action": "finish", "input": "Found it"}
+                        """;
+            }
+        });
+
+        TaskProgressListener listener = mock(TaskProgressListener.class);
+        doThrow(new RuntimeException("Listener broke")).when(listener).onTaskStarted(any());
+
+        var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
+        AgentTask task = runtime.execute(agent, new AgentTask("Find something"), listener);
+
+        // Task should still complete despite listener failure
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.COMPLETED);
+        assertThat(task.getResult()).isEqualTo("Found it");
     }
 
     @FunctionalInterface
