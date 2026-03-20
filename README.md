@@ -31,7 +31,7 @@ mvn clean install
 export OPENAI_API_KEY=sk-your-key-here
 
 # Run the demo
-cd javaclaw-demo
+cd javaclaw-agent
 mvn spring-boot:run
 ```
 
@@ -202,9 +202,9 @@ javaclaw/
 │       ├── policy/         # PolicyEngine, PolicyDecision
 │       ├── tools/          # ReadFileTool, SearchCodeTool, ShellCommandTool
 │       └── spring/         # JavaclawAutoConfiguration, JavaclawProperties
-├── javaclaw-demo/          # Spring Boot demo app
+├── javaclaw-agent/         # Spring Boot agent app
 │   ├── sample-repo/        # Sample Java code with intentional bugs
-│   └── com.javaclaw.demo   # DemoAgentConfig, AgentController
+│   └── com.javaclaw.agent  # AgentConfig, AgentController
 └── docs/
     └── ARCHITECTURE.md
 ```

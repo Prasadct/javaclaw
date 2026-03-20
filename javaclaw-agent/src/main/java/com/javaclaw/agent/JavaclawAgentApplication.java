@@ -1,12 +1,12 @@
-package com.javaclaw.demo;
+package com.javaclaw.agent;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class JavaclawDemoApplication {
+public class JavaclawAgentApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(JavaclawDemoApplication.class, args);
+        SpringApplication.run(JavaclawAgentApplication.class, args);
     }
 }

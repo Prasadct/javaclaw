@@ -10,9 +10,9 @@
         <version>0.1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>javaclaw-demo</artifactId>
-    <name>javaclaw-demo</name>
-    <description>Javaclaw demo application</description>
+    <artifactId>javaclaw-agent</artifactId>
+    <name>javaclaw-agent</name>
+    <description>Javaclaw agent application</description>
 
     <dependencies>
         <!-- Javaclaw core -->

@@ -1,4 +1,4 @@
-package com.javaclaw.demo;
+package com.javaclaw.agent;
 
 import com.javaclaw.core.approval.ApprovalRequest;
 import com.javaclaw.core.approval.ApprovalResult;

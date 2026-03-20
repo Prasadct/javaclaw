@@ -1,4 +1,4 @@
-package com.javaclaw.demo;
+package com.javaclaw.agent;
 
 import com.javaclaw.core.approval.ApprovalHandler;
 import com.javaclaw.core.approval.AsyncApprovalHandler;
@@ -18,7 +18,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 @Configuration
-public class DemoAgentConfig {
+public class AgentConfig {
 
     @Bean
     public ToolDefinition readFileTool(JavaclawProperties properties) {

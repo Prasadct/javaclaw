@@ -1,4 +1,4 @@
-package com.javaclaw.demo;
+package com.javaclaw.agent;
 
 import com.javaclaw.core.approval.AsyncApprovalHandler;
 import com.javaclaw.core.model.AgentDefinition;

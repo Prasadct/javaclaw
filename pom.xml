@@ -26,7 +26,7 @@
 
     <modules>
         <module>javaclaw-core</module>
-        <module>javaclaw-demo</module>
+        <module>javaclaw-agent</module>
     </modules>
 
     <dependencyManagement>
