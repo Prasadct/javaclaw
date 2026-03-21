@@ -4,6 +4,7 @@ import com.javaclaw.core.approval.ApprovalHandler;
 import com.javaclaw.core.approval.AsyncApprovalHandler;
 import com.javaclaw.core.model.AgentDefinition;
 import com.javaclaw.core.model.RiskLevel;
+import com.javaclaw.core.model.SimpleToolDefinition;
 import com.javaclaw.core.model.ToolDefinition;
 import com.javaclaw.core.policy.PolicyDecision;
 import com.javaclaw.core.policy.PolicyEngine;
@@ -11,6 +12,7 @@ import com.javaclaw.core.spring.JavaclawProperties;
 import com.javaclaw.core.tools.ReadFileTool;
 import com.javaclaw.core.tools.SearchCodeTool;
 import com.javaclaw.core.tools.ShellCommandTool;
+import com.javaclaw.core.tools.github.GitHubCreatePRTool;
 import com.javaclaw.core.tools.github.GitHubReadFileTool;
 import com.javaclaw.core.tools.github.GitHubReadIssueTool;
 import org.springframework.beans.factory.annotation.Value;
@@ -55,26 +57,56 @@ public class AgentConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(name = "javaclaw.github.token")
+    public ToolDefinition githubCreatePRTool(@Value("${javaclaw.github.token}") String token) {
+        return new GitHubCreatePRTool(token);
+    }
+
+    @Bean
+    public ToolDefinition taskCompleteTool() {
+        return new SimpleToolDefinition(
+                "task_complete",
+                "Signal that you have completed ALL actions the user requested. " +
+                "Input: a summary of what you accomplished. " +
+                "Only call this after you have performed all requested actions using the tools above.",
+                input -> input
+        );
+    }
+
+    @Bean
     public AgentDefinition bugfixAssistant() {
         return new AgentDefinition(
                 "bugfix-assistant",
                 """
                 You are a senior Java developer. You help find and fix bugs in Java projects.
-                When given a bug description, you:
-                1. Search the codebase to find relevant files
-                2. Read the relevant files to understand the code
-                3. Identify the bug
-                4. Explain the fix clearly
-                Always think step by step. Use tools to gather information before suggesting fixes.""",
-                List.of("read_file", "search_code", "run_command", "github_read_issue", "github_read_file")
+
+                When working with a GitHub repository:
+                1. Use github_read_issue to read the bug report
+                2. Use github_read_file to read source files (guess common paths like src/main/java/... based on class names in the issue)
+                3. Identify the bug and determine the fix
+                4. If asked to create a PR, use github_create_pr to create a pull request with the fixed code
+                5. Call task_complete with a summary of what you did
+
+                Important:
+                - search_code and read_file only work on LOCAL files, NOT on GitHub repositories.
+                - For GitHub repos, use github_read_file to read files. If you don't know the exact path, try common Java paths like src/main/java/<ClassName>.java.
+                - If a tool returns an error, try a different approach — do not repeat the same call.
+                - Always think step by step. Follow the user's instructions carefully.""",
+                List.of("read_file", "search_code", "run_command", "github_read_issue", "github_read_file", "github_create_pr", "task_complete")
         );
     }
 
     @Bean
-    public PolicyEngine policyEngine() {
+    public PolicyEngine policyEngine(List<ToolDefinition> allTools) {
+        // Build a set of HIGH risk tool names for policy checks
+        var highRiskTools = allTools.stream()
+                .filter(t -> t.riskLevel() == RiskLevel.HIGH)
+                .map(ToolDefinition::name)
+                .collect(java.util.stream.Collectors.toSet());
+
         return (agent, toolName, input) -> {
             // HIGH risk tools require approval
-            if ("run_command".equals(toolName)) {
+            if (highRiskTools.contains(toolName)) {
                 return PolicyDecision.REQUIRE_APPROVAL;
             }
             // Check if the tool is in the agent's allowed list

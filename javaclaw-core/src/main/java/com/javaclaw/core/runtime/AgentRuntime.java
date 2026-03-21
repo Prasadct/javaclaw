@@ -26,6 +26,7 @@ public class AgentRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(AgentRuntime.class);
     private static final int DEFAULT_MAX_STEPS = 10;
+    private static final int MAX_HISTORY_ENTRIES = 12;
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final ChatClient chatClient;
@@ -66,8 +67,18 @@ public class AgentRuntime {
         List<String> conversationHistory = new ArrayList<>();
         conversationHistory.add("Goal: " + goal);
 
+        String lastAction = "";
+        String lastInput = "";
+        int consecutiveRepeats = 0;
+
         for (int i = 0; i < maxSteps; i++) {
             log.debug("Iteration {}/{} for task {}", i + 1, maxSteps, task.getId());
+
+            if (conversationHistory.size() > MAX_HISTORY_ENTRIES) {
+                int excess = conversationHistory.size() - MAX_HISTORY_ENTRIES;
+                conversationHistory.subList(1, 1 + excess).clear();
+                conversationHistory.add(1, "[Earlier conversation history trimmed — focus on recent context]");
+            }
 
             String userMessage = String.join("\n", conversationHistory);
             String llmResponse;
@@ -111,19 +122,37 @@ public class AgentRuntime {
 
             String thought = parsed.path("thought").asText("");
             String action = parsed.path("action").asText("");
-            String input = parsed.path("input").asText("");
+            JsonNode inputNode = parsed.path("input");
+            String input = inputNode.isTextual() ? inputNode.asText("") : inputNode.toString();
 
             log.info("Thought: {} | Action: {} | Input: {}", thought, action, input);
             task.addAuditEvent(AuditEvent.of("THOUGHT", thought));
 
-            if ("finish".equalsIgnoreCase(action)) {
-                task.setStatus(TaskStatus.COMPLETED);
-                task.setResult(input);
-                task.addAuditEvent(AuditEvent.of("TASK_COMPLETED", input));
-                log.info("Task {} completed: {}", task.getId(), input);
-                notifyListener(listener, l -> l.onTaskCompleted(task));
-                return task;
+            conversationHistory.add("You responded: " + llmResponse.strip());
+
+            // Check for empty input (task_complete accepts plain strings, so exclude it)
+            if (input.isBlank() && !"task_complete".equals(action)) {
+                log.warn("LLM sent empty input for tool '{}', skipping execution", action);
+                conversationHistory.add("Tool '" + action + "' was NOT executed because input was empty. " +
+                        "You must provide the required fields. Check the tool description for required input format.");
+                continue;
             }
+
+            // Detect repeated calls
+            if (action.equals(lastAction) && input.equals(lastInput)) {
+                consecutiveRepeats++;
+                if (consecutiveRepeats >= 1) {
+                    log.warn("LLM repeated same call {} times: action={}, input={}", consecutiveRepeats, action, input);
+                    conversationHistory.add("SYSTEM: You have repeated the same tool call " + consecutiveRepeats +
+                            " times. You MUST try a DIFFERENT action or provide DIFFERENT input. " +
+                            "Review what you have already accomplished and decide on the next step.");
+                    continue;
+                }
+            } else {
+                consecutiveRepeats = 0;
+            }
+            lastAction = action;
+            lastInput = input;
 
             notifyListener(listener, l -> l.onToolRequested(task, action, input));
 
@@ -160,7 +189,8 @@ public class AgentRuntime {
                     var approvalRequest = new ApprovalRequest(
                             task.getId(), goal, action, input,
                             tool.riskLevel(),
-                            "Policy requires approval for tool '" + action + "'"
+                            tool.describeApprovalRequest(input),
+                            tool.approvalMetadata(input)
                     );
                     task.addAuditEvent(AuditEvent.of("APPROVAL_REQUESTED",
                             "Tool " + action + " requires approval"));
@@ -209,7 +239,20 @@ public class AgentRuntime {
                 return task;
             }
 
+            // Check if the executed tool was task_complete
+            if ("task_complete".equals(action)) {
+                task.setStatus(TaskStatus.COMPLETED);
+                task.setResult(toolResult);
+                task.addAuditEvent(AuditEvent.of("TASK_COMPLETED", toolResult));
+                log.info("Task {} completed: {}", task.getId(), toolResult);
+                notifyListener(listener, l -> l.onTaskCompleted(task));
+                return task;
+            }
+
             conversationHistory.add("Tool '" + action + "' returned: " + toolResult);
+            if (toolResult.startsWith("ERROR:")) {
+                conversationHistory.add("Note: The tool returned an error. Try a different approach or a different tool.");
+            }
         }
 
         // Max iterations reached
@@ -236,10 +279,12 @@ public class AgentRuntime {
                 toolRegistry.describeAll() + "\n" +
                 """
                 You must respond ONLY with a JSON object in this exact format:
-                {"thought": "your reasoning", "action": "tool_name or finish", "input": "the input for the tool, or the final answer if action is finish"}
+                {"thought": "your reasoning", "action": "one of the available tools", "input": "<tool input>"}
 
-                Do not include any text outside the JSON object.
-                """;
+                Rules:
+                - "input" can be a plain string OR a JSON object, depending on what the tool expects.
+                - If a tool returns an ERROR, do NOT repeat the same call. Analyze the error and try a different approach or tool.
+                - Do not include any text outside the JSON object.""";
     }
 
     private JsonNode parseResponse(String response) throws Exception {

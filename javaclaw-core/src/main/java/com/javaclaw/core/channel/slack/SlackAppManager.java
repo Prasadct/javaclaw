@@ -51,6 +51,12 @@ public class SlackAppManager {
 
     @PostConstruct
     public void start() throws Exception {
+        if (botToken == null || botToken.isBlank() || appToken == null || appToken.isBlank()) {
+            log.warn("Slack bot/app tokens not configured — Slack integration disabled. "
+                    + "Set SLACK_BOT_TOKEN and SLACK_APP_TOKEN to enable.");
+            return;
+        }
+
         AppConfig appConfig = new AppConfig();
         appConfig.setSingleTeamBotToken(botToken);
         App app = new App(appConfig);

@@ -6,6 +6,7 @@ import com.javaclaw.core.channel.TaskProgressListener;
 import com.javaclaw.core.model.AgentDefinition;
 import com.javaclaw.core.model.AgentTask;
 import com.javaclaw.core.model.TaskStatus;
+import com.javaclaw.core.model.SimpleToolDefinition;
 import com.javaclaw.core.model.ToolDefinition;
 import com.javaclaw.core.policy.PolicyDecision;
 import com.javaclaw.core.policy.PolicyEngine;
@@ -31,13 +32,14 @@ class AgentRuntimeTest {
     void setUp() {
         toolRegistry = new ToolRegistry();
         policyEngine = mock(PolicyEngine.class);
-        agent = new AgentDefinition("test-agent", "You are a test agent.", List.of("lookup"));
+        toolRegistry.register(new SimpleToolDefinition("task_complete", "Complete the task", input -> input));
+        agent = new AgentDefinition("test-agent", "You are a test agent.", List.of("lookup", "task_complete"));
     }
 
     @Test
     void happyPath_toolCalledThenFinish() {
         // Register a tool
-        toolRegistry.register(new ToolDefinition("lookup", "Looks up data", input -> "result-for-" + input));
+        toolRegistry.register(new SimpleToolDefinition("lookup", "Looks up data", input -> "result-for-" + input));
 
         // Policy allows everything
         when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
@@ -52,7 +54,7 @@ class AgentRuntimeTest {
                         """;
             } else {
                 return """
-                        {"thought": "I have the result", "action": "finish", "input": "The answer is result-for-key1"}
+                        {"thought": "I have the result", "action": "task_complete", "input": "The answer is result-for-key1"}
                         """;
             }
         });
@@ -75,7 +77,7 @@ class AgentRuntimeTest {
 
     @Test
     void policyDeny_stopsExecution() {
-        toolRegistry.register(new ToolDefinition("dangerous", "A dangerous tool", input -> "should not run"));
+        toolRegistry.register(new SimpleToolDefinition("dangerous", "A dangerous tool", input -> "should not run"));
 
         when(policyEngine.evaluate(any(), eq("dangerous"), any())).thenReturn(PolicyDecision.DENY);
 
@@ -96,9 +98,10 @@ class AgentRuntimeTest {
 
     @Test
     void requireApproval_autoApprovesAndContinues() {
-        toolRegistry.register(new ToolDefinition("sensitive", "Sensitive operation", input -> "done"));
+        toolRegistry.register(new SimpleToolDefinition("sensitive", "Sensitive operation", input -> "done"));
 
         when(policyEngine.evaluate(any(), eq("sensitive"), any())).thenReturn(PolicyDecision.REQUIRE_APPROVAL);
+        when(policyEngine.evaluate(any(), eq("task_complete"), any())).thenReturn(PolicyDecision.ALLOW);
 
         var callCounter = new AtomicInteger(0);
         ChatClient chatClient = mockChatClient(() -> {
@@ -109,7 +112,7 @@ class AgentRuntimeTest {
                         """;
             } else {
                 return """
-                        {"thought": "Done", "action": "finish", "input": "Operation completed"}
+                        {"thought": "Done", "action": "task_complete", "input": "Operation completed"}
                         """;
             }
         });
@@ -127,7 +130,7 @@ class AgentRuntimeTest {
 
     @Test
     void approvalRejected_taskCancelled() {
-        toolRegistry.register(new ToolDefinition("sensitive", "Sensitive operation", input -> "should not run"));
+        toolRegistry.register(new SimpleToolDefinition("sensitive", "Sensitive operation", input -> "should not run"));
 
         when(policyEngine.evaluate(any(), eq("sensitive"), any())).thenReturn(PolicyDecision.REQUIRE_APPROVAL);
 
@@ -170,6 +173,38 @@ class AgentRuntimeTest {
     }
 
     @Test
+    void taskComplete_executesAsRegularTool() {
+        toolRegistry.register(new SimpleToolDefinition("lookup", "Looks up data", input -> "result-for-" + input));
+        when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
+
+        var callCounter = new AtomicInteger(0);
+        ChatClient chatClient = mockChatClient(() -> {
+            int call = callCounter.getAndIncrement();
+            if (call == 0) {
+                return """
+                        {"thought": "Looking up data first", "action": "lookup", "input": "key1"}
+                        """;
+            } else {
+                return """
+                        {"thought": "All done", "action": "task_complete", "input": "Looked up key1 and got result-for-key1"}
+                        """;
+            }
+        });
+
+        var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
+        AgentTask task = runtime.execute(agent, new AgentTask("Look up and report"));
+
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.COMPLETED);
+        assertThat(task.getResult()).isEqualTo("Looked up key1 and got result-for-key1");
+
+        // task_complete goes through normal tool pipeline — policy is checked
+        verify(policyEngine).evaluate(agent, "task_complete", "Looked up key1 and got result-for-key1");
+
+        var eventTypes = task.getAuditTrail().stream().map(e -> e.type()).toList();
+        assertThat(eventTypes).contains("TOOL_EXECUTED", "TASK_COMPLETED");
+    }
+
+    @Test
     void malformedLlmResponse_failsGracefully() {
         when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
 
@@ -184,7 +219,7 @@ class AgentRuntimeTest {
 
     @Test
     void execute_withListener_callsAllCallbacks() {
-        toolRegistry.register(new ToolDefinition("lookup", "Looks up data", input -> "result-for-" + input));
+        toolRegistry.register(new SimpleToolDefinition("lookup", "Looks up data", input -> "result-for-" + input));
         when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
 
         var callCounter = new AtomicInteger(0);
@@ -196,7 +231,7 @@ class AgentRuntimeTest {
                         """;
             } else {
                 return """
-                        {"thought": "Done", "action": "finish", "input": "Found it"}
+                        {"thought": "Done", "action": "task_complete", "input": "Found it"}
                         """;
             }
         });
@@ -217,7 +252,7 @@ class AgentRuntimeTest {
 
     @Test
     void execute_withNullListener_worksNormally() {
-        toolRegistry.register(new ToolDefinition("lookup", "Looks up data", input -> "result"));
+        toolRegistry.register(new SimpleToolDefinition("lookup", "Looks up data", input -> "result"));
         when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
 
         var callCounter = new AtomicInteger(0);
@@ -229,7 +264,7 @@ class AgentRuntimeTest {
                         """;
             } else {
                 return """
-                        {"thought": "Done", "action": "finish", "input": "Found it"}
+                        {"thought": "Done", "action": "task_complete", "input": "Found it"}
                         """;
             }
         });
@@ -243,7 +278,7 @@ class AgentRuntimeTest {
 
     @Test
     void execute_listenerException_doesNotBreakRuntime() {
-        toolRegistry.register(new ToolDefinition("lookup", "Looks up data", input -> "result"));
+        toolRegistry.register(new SimpleToolDefinition("lookup", "Looks up data", input -> "result"));
         when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
 
         var callCounter = new AtomicInteger(0);
@@ -255,7 +290,7 @@ class AgentRuntimeTest {
                         """;
             } else {
                 return """
-                        {"thought": "Done", "action": "finish", "input": "Found it"}
+                        {"thought": "Done", "action": "task_complete", "input": "Found it"}
                         """;
             }
         });
@@ -269,6 +304,99 @@ class AgentRuntimeTest {
         // Task should still complete despite listener failure
         assertThat(task.getStatus()).isEqualTo(TaskStatus.COMPLETED);
         assertThat(task.getResult()).isEqualTo("Found it");
+    }
+
+    @Test
+    void objectInput_parsedCorrectly() {
+        // Tool that echoes its input so we can verify what it received
+        toolRegistry.register(new SimpleToolDefinition("lookup", "Looks up data", input -> "got:" + input));
+        when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
+
+        var callCounter = new AtomicInteger(0);
+        ChatClient chatClient = mockChatClient(() -> {
+            int call = callCounter.getAndIncrement();
+            if (call == 0) {
+                // LLM sends input as a JSON object, not a string
+                return """
+                        {"thought": "Looking up", "action": "lookup", "input": {"key": "value", "num": 42}}
+                        """;
+            } else {
+                return """
+                        {"thought": "Done", "action": "task_complete", "input": "finished"}
+                        """;
+            }
+        });
+
+        var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
+        AgentTask task = runtime.execute(agent, new AgentTask("Test object input"));
+
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.COMPLETED);
+
+        // Verify the tool received the JSON object as a string, not empty string
+        var toolExecutedEvents = task.getAuditTrail().stream()
+                .filter(e -> "TOOL_EXECUTED".equals(e.type()))
+                .toList();
+        assertThat(toolExecutedEvents).anyMatch(e -> e.detail().contains("got:{\"key\":\"value\",\"num\":42}"));
+    }
+
+    @Test
+    void repeatedToolCall_breaksLoop() {
+        toolRegistry.register(new SimpleToolDefinition("lookup", "Looks up data", input -> "result"));
+        when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
+
+        var callCounter = new AtomicInteger(0);
+        ChatClient chatClient = mockChatClient(() -> {
+            int call = callCounter.getAndIncrement();
+            if (call <= 2) {
+                return """
+                        {"thought": "Looking up", "action": "lookup", "input": "same-key"}
+                        """;
+            } else {
+                return """
+                        {"thought": "Done", "action": "task_complete", "input": "finished"}
+                        """;
+            }
+        });
+
+        var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
+        AgentTask task = runtime.execute(agent, new AgentTask("Test loop breaking"));
+
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.COMPLETED);
+        // Tool should only be executed once (first call), subsequent identical calls are skipped
+        long toolExecutions = task.getAuditTrail().stream()
+                .filter(e -> "TOOL_EXECUTED".equals(e.type()) && e.detail().contains("tool=lookup"))
+                .count();
+        assertThat(toolExecutions).isEqualTo(1);
+    }
+
+    @Test
+    void emptyInput_skipsToolExecution() {
+        toolRegistry.register(new SimpleToolDefinition("lookup", "Looks up data", input -> "result"));
+        when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
+
+        var callCounter = new AtomicInteger(0);
+        ChatClient chatClient = mockChatClient(() -> {
+            int call = callCounter.getAndIncrement();
+            if (call == 0) {
+                return """
+                        {"thought": "Looking up", "action": "lookup", "input": ""}
+                        """;
+            } else {
+                return """
+                        {"thought": "Done", "action": "task_complete", "input": "finished"}
+                        """;
+            }
+        });
+
+        var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine);
+        AgentTask task = runtime.execute(agent, new AgentTask("Test empty input"));
+
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.COMPLETED);
+        // lookup should never be executed because input was empty
+        long lookupExecutions = task.getAuditTrail().stream()
+                .filter(e -> "TOOL_EXECUTED".equals(e.type()) && e.detail().contains("tool=lookup"))
+                .count();
+        assertThat(lookupExecutions).isEqualTo(0);
     }
 
     @FunctionalInterface

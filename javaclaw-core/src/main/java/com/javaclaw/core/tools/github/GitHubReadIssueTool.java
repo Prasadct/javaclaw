@@ -3,6 +3,7 @@ package com.javaclaw.core.tools.github;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javaclaw.core.model.RiskLevel;
+import com.javaclaw.core.model.SimpleToolDefinition;
 import com.javaclaw.core.model.ToolDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +26,7 @@ public class GitHubReadIssueTool {
     }
 
     public ToolDefinition definition() {
-        return new ToolDefinition(
+        return new SimpleToolDefinition(
                 "github_read_issue",
                 "Reads a GitHub issue by number. Input: JSON with 'owner', 'repo', and 'issue_number' fields.",
                 RiskLevel.LOW,

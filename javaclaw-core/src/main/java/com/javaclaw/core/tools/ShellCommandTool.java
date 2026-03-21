@@ -1,6 +1,7 @@
 package com.javaclaw.core.tools;
 
 import com.javaclaw.core.model.RiskLevel;
+import com.javaclaw.core.model.SimpleToolDefinition;
 import com.javaclaw.core.model.ToolDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +22,7 @@ public class ShellCommandTool {
     }
 
     public ToolDefinition definition() {
-        return new ToolDefinition(
+        return new SimpleToolDefinition(
                 "run_command",
                 "Runs a shell command. Input: the command to execute.",
                 RiskLevel.HIGH,

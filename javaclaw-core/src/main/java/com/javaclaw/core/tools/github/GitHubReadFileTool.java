@@ -3,6 +3,7 @@ package com.javaclaw.core.tools.github;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javaclaw.core.model.RiskLevel;
+import com.javaclaw.core.model.SimpleToolDefinition;
 import com.javaclaw.core.model.ToolDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +27,7 @@ public class GitHubReadFileTool {
     }
 
     public ToolDefinition definition() {
-        return new ToolDefinition(
+        return new SimpleToolDefinition(
                 "github_read_file",
                 "Reads a file from a GitHub repository. Input: JSON with 'owner', 'repo', 'path', and optional 'branch' (default: 'main') fields.",
                 RiskLevel.LOW,

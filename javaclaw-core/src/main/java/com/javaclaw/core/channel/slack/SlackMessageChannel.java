@@ -8,6 +8,7 @@ import com.slack.api.methods.request.chat.ChatUpdateRequest;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
 import com.slack.api.methods.response.chat.ChatUpdateResponse;
 import com.slack.api.model.block.ActionsBlock;
+import com.slack.api.model.block.LayoutBlock;
 import com.slack.api.model.block.SectionBlock;
 import com.slack.api.model.block.composition.MarkdownTextObject;
 import com.slack.api.model.block.composition.PlainTextObject;
@@ -15,7 +16,9 @@ import com.slack.api.model.block.element.ButtonElement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class SlackMessageChannel implements MessageChannel {
 
@@ -67,21 +70,56 @@ public class SlackMessageChannel implements MessageChannel {
     @Override
     public String sendApprovalRequest(String channelId, String threadId, ApprovalRequest request) {
         try {
-            String markdownText = String.format(
-                    "*Approval Required*\n" +
-                    ">*Tool:* `%s`\n" +
-                    ">*Risk Level:* %s\n" +
-                    ">*Input:* `%s`\n" +
-                    ">*Reason:* %s",
-                    request.toolName(),
-                    request.riskLevel(),
-                    truncate(request.toolInput(), 200),
-                    request.reason()
-            );
+            Map<String, String> metadata = request.metadata() != null ? request.metadata() : Map.of();
+            List<LayoutBlock> blocks = new ArrayList<>();
 
-            SectionBlock section = SectionBlock.builder()
+            // Header section with PR title if available
+            String prTitle = metadata.getOrDefault("pr_title", "");
+            if (!prTitle.isBlank()) {
+                blocks.add(SectionBlock.builder()
+                        .text(MarkdownTextObject.builder()
+                                .text("*Approval Required — " + prTitle + "*")
+                                .build())
+                        .build());
+            }
+
+            // Context: repo, branch, file_path
+            String repoMeta = metadata.getOrDefault("repo", "");
+            String branchMeta = metadata.getOrDefault("branch", "");
+            String filePathMeta = metadata.getOrDefault("file_path", "");
+            if (!repoMeta.isBlank() || !branchMeta.isBlank() || !filePathMeta.isBlank()) {
+                var contextParts = new StringBuilder();
+                if (!repoMeta.isBlank()) contextParts.append("*Repo:* `").append(repoMeta).append("`  ");
+                if (!branchMeta.isBlank()) contextParts.append("*Branch:* `").append(branchMeta).append("`  ");
+                if (!filePathMeta.isBlank()) contextParts.append("*File:* `").append(filePathMeta).append("`");
+                blocks.add(SectionBlock.builder()
+                        .text(MarkdownTextObject.builder().text(contextParts.toString().strip()).build())
+                        .build());
+            }
+
+            // Main description (reason contains diff preview for PR tools)
+            String description = truncate(request.reason(), 2900);
+            String markdownText;
+            if (prTitle.isBlank()) {
+                // Generic approval format for non-PR tools
+                markdownText = String.format(
+                        "*Approval Required*\n" +
+                        ">*Tool:* `%s`\n" +
+                        ">*Risk Level:* %s\n" +
+                        ">*Input:* `%s`\n" +
+                        ">%s",
+                        request.toolName(),
+                        request.riskLevel(),
+                        truncate(request.toolInput(), 200),
+                        description
+                );
+            } else {
+                markdownText = description;
+            }
+
+            blocks.add(SectionBlock.builder()
                     .text(MarkdownTextObject.builder().text(markdownText).build())
-                    .build();
+                    .build());
 
             ButtonElement approveButton = ButtonElement.builder()
                     .actionId("approve_tool")
@@ -97,9 +135,9 @@ public class SlackMessageChannel implements MessageChannel {
                     .style("danger")
                     .build();
 
-            ActionsBlock actions = ActionsBlock.builder()
+            blocks.add(ActionsBlock.builder()
                     .elements(List.of(approveButton, rejectButton))
-                    .build();
+                    .build());
 
             String fallbackText = "Approval required for tool '" + request.toolName() + "'";
 
@@ -107,7 +145,7 @@ public class SlackMessageChannel implements MessageChannel {
                     .channel(channelId)
                     .threadTs(threadId)
                     .text(fallbackText)
-                    .blocks(List.of(section, actions))
+                    .blocks(blocks)
                     .build();
             ChatPostMessageResponse response = methodsClient.chatPostMessage(postRequest);
 

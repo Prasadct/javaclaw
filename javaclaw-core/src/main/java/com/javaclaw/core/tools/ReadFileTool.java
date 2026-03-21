@@ -1,6 +1,7 @@
 package com.javaclaw.core.tools;
 
 import com.javaclaw.core.model.RiskLevel;
+import com.javaclaw.core.model.SimpleToolDefinition;
 import com.javaclaw.core.model.ToolDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +21,7 @@ public class ReadFileTool {
     }
 
     public ToolDefinition definition() {
-        return new ToolDefinition(
+        return new SimpleToolDefinition(
                 "read_file",
                 "Reads the content of a file at the given path. Input: file path as string.",
                 RiskLevel.LOW,

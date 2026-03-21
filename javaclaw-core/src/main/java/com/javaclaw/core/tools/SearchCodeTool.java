@@ -3,6 +3,7 @@ package com.javaclaw.core.tools;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javaclaw.core.model.RiskLevel;
+import com.javaclaw.core.model.SimpleToolDefinition;
 import com.javaclaw.core.model.ToolDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,9 +28,9 @@ public class SearchCodeTool {
     }
 
     public ToolDefinition definition() {
-        return new ToolDefinition(
+        return new SimpleToolDefinition(
                 "search_code",
-                "Searches for a pattern in files within a directory. Input: JSON with 'pattern' and 'directory' fields.",
+                "Searches for a pattern in LOCAL files within a directory on this server. Not for GitHub repositories — use github_read_file instead. Input: JSON with 'pattern' (regex) and 'directory' (relative path) fields.",
                 RiskLevel.LOW,
                 this::execute
         );
