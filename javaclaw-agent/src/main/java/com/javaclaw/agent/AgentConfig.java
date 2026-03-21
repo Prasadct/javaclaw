@@ -11,6 +11,10 @@ import com.javaclaw.core.spring.JavaclawProperties;
 import com.javaclaw.core.tools.ReadFileTool;
 import com.javaclaw.core.tools.SearchCodeTool;
 import com.javaclaw.core.tools.ShellCommandTool;
+import com.javaclaw.core.tools.github.GitHubReadFileTool;
+import com.javaclaw.core.tools.github.GitHubReadIssueTool;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -39,6 +43,18 @@ public class AgentConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(name = "javaclaw.github.token")
+    public ToolDefinition githubReadIssueTool(@Value("${javaclaw.github.token}") String token) {
+        return new GitHubReadIssueTool(token).definition();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "javaclaw.github.token")
+    public ToolDefinition githubReadFileTool(@Value("${javaclaw.github.token}") String token) {
+        return new GitHubReadFileTool(token).definition();
+    }
+
+    @Bean
     public AgentDefinition bugfixAssistant() {
         return new AgentDefinition(
                 "bugfix-assistant",
@@ -50,7 +66,7 @@ public class AgentConfig {
                 3. Identify the bug
                 4. Explain the fix clearly
                 Always think step by step. Use tools to gather information before suggesting fixes.""",
-                List.of("read_file", "search_code", "run_command")
+                List.of("read_file", "search_code", "run_command", "github_read_issue", "github_read_file")
         );
     }
 

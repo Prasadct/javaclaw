@@ -14,6 +14,8 @@ javaclaw:
   max-steps: 10
   tools:
     base-directory: ./sample-repo
+  github:
+    token: ${GITHUB_TOKEN:}
   approval:
     timeout-seconds: 300
   slack:
