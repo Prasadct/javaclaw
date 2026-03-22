@@ -58,6 +58,8 @@ public class AgentController {
         AgentTask task = new AgentTask(goal);
         tasks.put(task.getId(), task);
 
+        String initialStatus = task.getStatus().name();
+
         executor.submit(() -> {
             try {
                 agentRuntime.execute(agentDefinition, task);
@@ -69,7 +71,7 @@ public class AgentController {
 
         return Map.of(
                 "taskId", task.getId(),
-                "status", task.getStatus().name(),
+                "status", initialStatus,
                 "goal", goal
         );
     }
