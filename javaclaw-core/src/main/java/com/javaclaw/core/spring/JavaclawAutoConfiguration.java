@@ -2,6 +2,8 @@ package com.javaclaw.core.spring;
 
 import com.javaclaw.core.approval.ApprovalHandler;
 import com.javaclaw.core.approval.CLIApprovalHandler;
+import com.javaclaw.core.memory.MemoryService;
+import com.javaclaw.core.memory.MemoryStore;
 import com.javaclaw.core.model.AgentDefinition;
 import com.javaclaw.core.model.RiskLevel;
 import com.javaclaw.core.model.ToolDefinition;
@@ -12,7 +14,9 @@ import com.javaclaw.core.runtime.ToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -52,13 +56,23 @@ public class JavaclawAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnBean(MemoryStore.class)
+    @ConditionalOnMissingBean
+    public MemoryService memoryService(MemoryStore memoryStore) {
+        log.info("Memory subsystem enabled — creating MemoryService");
+        return new MemoryService(memoryStore);
+    }
+
+    @Bean
     @ConditionalOnMissingBean
     public AgentRuntime agentRuntime(ChatClient.Builder chatClientBuilder,
                                      ToolRegistry toolRegistry,
                                      PolicyEngine policyEngine,
                                      ApprovalHandler approvalHandler,
-                                     JavaclawProperties properties) {
+                                     JavaclawProperties properties,
+                                     @Autowired(required = false) MemoryService memoryService) {
         ChatClient chatClient = chatClientBuilder.build();
-        return new AgentRuntime(chatClient, toolRegistry, policyEngine, approvalHandler, properties.getMaxSteps());
+        return new AgentRuntime(chatClient, toolRegistry, policyEngine, approvalHandler,
+                properties.getMaxSteps(), memoryService);
     }
 }

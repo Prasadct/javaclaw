@@ -48,7 +48,7 @@ class AgentControllerTest {
         when(policyEngine.evaluate(any(), any(), any())).thenReturn(PolicyDecision.ALLOW);
 
         var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine, asyncApprovalHandler, 10);
-        controller = new AgentController(runtime, agent, asyncApprovalHandler);
+        controller = new AgentController(runtime, agent, asyncApprovalHandler, null);
 
         Map<String, Object> response = controller.startTask(Map.of("goal", "Test goal"));
         assertThat(response).containsKey("taskId");
@@ -78,7 +78,7 @@ class AgentControllerTest {
         });
 
         var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine, asyncApprovalHandler, 10);
-        controller = new AgentController(runtime, agent, asyncApprovalHandler);
+        controller = new AgentController(runtime, agent, asyncApprovalHandler, null);
 
         // Start the task — taskId is returned immediately
         Map<String, Object> startResponse = controller.startTask(Map.of("goal", "Sensitive operation"));
@@ -130,7 +130,7 @@ class AgentControllerTest {
                 """);
 
         var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine, asyncApprovalHandler, 10);
-        controller = new AgentController(runtime, agent, asyncApprovalHandler);
+        controller = new AgentController(runtime, agent, asyncApprovalHandler, null);
 
         // Start the task — taskId is returned immediately
         Map<String, Object> startResponse = controller.startTask(Map.of("goal", "Sensitive operation"));
@@ -168,7 +168,7 @@ class AgentControllerTest {
                 {"thought": "Done", "action": "task_complete", "input": "result"}
                 """);
         var runtime = new AgentRuntime(chatClient, toolRegistry, policyEngine, asyncApprovalHandler, 10);
-        controller = new AgentController(runtime, agent, asyncApprovalHandler);
+        controller = new AgentController(runtime, agent, asyncApprovalHandler, null);
 
         Map<String, Object> pending = controller.getPendingApprovals();
         assertThat((int) pending.get("count")).isEqualTo(0);

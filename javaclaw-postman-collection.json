@@ -1,0 +1,224 @@
+{
+	"info": {
+		"_postman_id": "javaclaw-api-collection",
+		"name": "Javaclaw API",
+		"description": "API collection for the Javaclaw AI Agent project",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "taskId",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Agent",
+			"item": [
+				{
+					"name": "Start Task",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.taskId) {",
+									"    pm.collectionVariables.set('taskId', jsonData.taskId);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"goal\": \"Read the file src/main/java/com/example/UserController.java and summarize what it does\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/agent/task",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agent", "task"]
+						},
+						"description": "Start a new agent task. The taskId is automatically saved for use in subsequent requests."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Task by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/agent/task/{{taskId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agent", "task", "{{taskId}}"]
+						},
+						"description": "Get the status and details of a specific task. Uses the taskId from the last 'Start Task' call."
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Tasks",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/agent/tasks",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agent", "tasks"]
+						},
+						"description": "List all tasks and their statuses."
+					},
+					"response": []
+				},
+				{
+					"name": "Approve Task",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"approved\": true,\n    \"reason\": \"Looks good, proceed\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/agent/task/{{taskId}}/approve",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agent", "task", "{{taskId}}", "approve"]
+						},
+						"description": "Approve or reject a task that is waiting for human approval."
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Task",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"approved\": false,\n    \"reason\": \"Too risky, do not proceed\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/agent/task/{{taskId}}/approve",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agent", "task", "{{taskId}}", "approve"]
+						},
+						"description": "Reject a task that is waiting for human approval."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Pending Approvals",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/agent/approvals/pending",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agent", "approvals", "pending"]
+						},
+						"description": "List all tasks currently waiting for human approval."
+					},
+					"response": []
+				}
+			],
+			"description": "Agent task management - create tasks, check status, and handle approvals."
+		},
+		{
+			"name": "Memory",
+			"item": [
+				{
+					"name": "Save Memory Entry",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"category\": \"test\",\n    \"key\": \"greeting\",\n    \"value\": \"Hello from Postman\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/memory",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "memory"]
+						},
+						"description": "Save a key-value memory entry under a category."
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Memory Entries",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/memory",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "memory"]
+						},
+						"description": "Retrieve all stored memory entries."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Memory Context",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/memory/context",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "memory", "context"]
+						},
+						"description": "Get the formatted memory context summary (plain text) that gets injected into agent prompts."
+					},
+					"response": []
+				},
+				{
+					"name": "Wipe All Memory",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/memory",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "memory"]
+						},
+						"description": "Delete all memory entries. Use with caution."
+					},
+					"response": []
+				}
+			],
+			"description": "Persistent memory management - store, retrieve, and manage agent memory."
+		}
+	]
+}
