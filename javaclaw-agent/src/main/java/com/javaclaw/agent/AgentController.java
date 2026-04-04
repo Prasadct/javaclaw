@@ -73,6 +73,7 @@ public class AgentController {
                     memoryService.recordTaskOutcome(task.getGoal(), task.getStatus().name().toLowerCase());
                 }
             } catch (Exception e) {
+                task.setStatus(TaskStatus.FAILED);
                 log.error("Task execution failed for task {}: {}", task.getId(), e.getMessage(), e);
                 if (memoryService != null) {
                     memoryService.recordTaskOutcome(task.getGoal(), "unexpected_failure");

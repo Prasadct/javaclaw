@@ -107,7 +107,7 @@ class MemoryServiceTest {
     }
 
     @Test
-    void auditLog_returnsSortedByUpdatedAtDesc() {
+    void getAllEntries_returnsSortedByUpdatedAtDesc() {
         Instant older = Instant.parse("2025-01-01T00:00:00Z");
         Instant newer = Instant.parse("2025-06-01T00:00:00Z");
         when(store.findAll()).thenReturn(List.of(
@@ -115,7 +115,7 @@ class MemoryServiceTest {
                 new MemoryEntry("id2", "repo", "new", "v2", "user", newer, newer)
         ));
 
-        List<MemoryEntry> log = service.auditLog();
+        List<MemoryEntry> log = service.getAllEntries();
 
         assertThat(log).hasSize(2);
         assertThat(log.get(0).key()).isEqualTo("new");

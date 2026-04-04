@@ -207,7 +207,16 @@
 					"name": "Wipe All Memory",
 					"request": {
 						"method": "DELETE",
-						"header": [],
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"confirm\": \"wipe\"\n}"
+						},
 						"url": {
 							"raw": "{{baseUrl}}/api/memory",
 							"host": ["{{baseUrl}}"],

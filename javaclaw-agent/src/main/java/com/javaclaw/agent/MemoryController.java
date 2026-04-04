@@ -2,6 +2,9 @@ package com.javaclaw.agent;
 
 import com.javaclaw.core.memory.MemoryEntry;
 import com.javaclaw.core.memory.MemoryService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -9,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -16,19 +20,25 @@ import java.util.Map;
 @RequestMapping("/api/memory")
 public class MemoryController {
 
-    private final MemoryService memoryService;
+    private static final Logger log = LoggerFactory.getLogger(MemoryController.class);
 
-    public MemoryController(MemoryService memoryService) {
-        this.memoryService = memoryService;
-    }
+    @Autowired(required = false)
+    private MemoryService memoryService;
 
     @GetMapping
     public List<MemoryEntry> getAll() {
-        return memoryService.auditLog();
+        if (memoryService == null) {
+            return Collections.emptyList();
+        }
+        return memoryService.getAllEntries();
     }
 
     @PostMapping
     public Map<String, String> save(@RequestBody Map<String, String> request) {
+        if (memoryService == null) {
+            return Map.of("status", "disabled");
+        }
+
         String category = request.get("category");
         String key = request.get("key");
         String value = request.get("value");
@@ -42,13 +52,23 @@ public class MemoryController {
     }
 
     @DeleteMapping
-    public Map<String, String> wipeAll() {
+    public Map<String, String> wipeAll(@RequestBody Map<String, String> request) {
+        if (memoryService == null) {
+            return Map.of("status", "disabled");
+        }
+        if (!"wipe".equals(request.get("confirm"))) {
+            throw new IllegalArgumentException("Request body must contain {\"confirm\":\"wipe\"} to confirm deletion");
+        }
+        log.warn("Wiping all memory entries");
         memoryService.wipeAll();
         return Map.of("status", "wiped");
     }
 
     @GetMapping("/context")
     public String getContext() {
+        if (memoryService == null) {
+            return "";
+        }
         return memoryService.summarizeContext();
     }
 }

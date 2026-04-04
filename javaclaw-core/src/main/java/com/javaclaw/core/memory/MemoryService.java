@@ -64,7 +64,7 @@ public class MemoryService {
         store.wipeAll();
     }
 
-    public List<MemoryEntry> auditLog() {
+    public List<MemoryEntry> getAllEntries() {
         List<MemoryEntry> all = store.findAll();
         return all.stream()
                 .sorted(Comparator.comparing(MemoryEntry::updatedAt).reversed())

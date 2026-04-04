@@ -16,7 +16,7 @@ spring:
     password:
   h2:
     console:
-      enabled: true
+      enabled: true  # Dev only — disable in production profiles
       path: /h2-console
 
 javaclaw:

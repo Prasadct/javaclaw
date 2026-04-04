@@ -30,6 +30,8 @@ public class H2MemoryStore implements MemoryStore {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    // TODO: Replace with Flyway or Liquibase for proper schema migrations.
+    //  CREATE TABLE IF NOT EXISTS won't apply column changes to existing databases.
     @PostConstruct
     public void initSchema() {
         jdbcTemplate.execute("""
@@ -48,6 +50,8 @@ public class H2MemoryStore implements MemoryStore {
 
     @Override
     public void save(MemoryEntry entry) {
+        // MERGE INTO ... KEY(...) is H2-specific upsert syntax.
+        // Other databases would need INSERT ... ON CONFLICT or equivalent.
         jdbcTemplate.update("""
                 MERGE INTO javaclaw_memory (id, category, mem_key, mem_value, source, created_at, updated_at)
                 KEY (category, mem_key)
