@@ -3,12 +3,14 @@ package com.javaclaw.agent;
 import com.javaclaw.core.approval.ApprovalRequest;
 import com.javaclaw.core.approval.ApprovalResult;
 import com.javaclaw.core.approval.AsyncApprovalHandler;
+import com.javaclaw.core.memory.MemoryService;
 import com.javaclaw.core.model.AgentDefinition;
 import com.javaclaw.core.model.AgentTask;
 import com.javaclaw.core.model.TaskStatus;
 import com.javaclaw.core.runtime.AgentRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,6 +35,7 @@ public class AgentController {
     private final AgentRuntime agentRuntime;
     private final AgentDefinition agentDefinition;
     private final AsyncApprovalHandler asyncApprovalHandler;
+    private final MemoryService memoryService;
     private final ConcurrentHashMap<String, AgentTask> tasks = new ConcurrentHashMap<>();
     private final ExecutorService executor = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "agent-task");
@@ -42,10 +45,12 @@ public class AgentController {
 
     public AgentController(AgentRuntime agentRuntime,
                            AgentDefinition agentDefinition,
-                           AsyncApprovalHandler asyncApprovalHandler) {
+                           AsyncApprovalHandler asyncApprovalHandler,
+                           @Autowired(required = false) MemoryService memoryService) {
         this.agentRuntime = agentRuntime;
         this.agentDefinition = agentDefinition;
         this.asyncApprovalHandler = asyncApprovalHandler;
+        this.memoryService = memoryService;
     }
 
     @PostMapping("/task")
@@ -64,8 +69,15 @@ public class AgentController {
             try {
                 agentRuntime.execute(agentDefinition, task);
                 log.info("Task {} finished with status {}", task.getId(), task.getStatus());
+                if (memoryService != null) {
+                    memoryService.recordTaskOutcome(task.getGoal(), task.getStatus().name().toLowerCase());
+                }
             } catch (Exception e) {
+                task.setStatus(TaskStatus.FAILED);
                 log.error("Task execution failed for task {}: {}", task.getId(), e.getMessage(), e);
+                if (memoryService != null) {
+                    memoryService.recordTaskOutcome(task.getGoal(), "unexpected_failure");
+                }
             }
         });
 

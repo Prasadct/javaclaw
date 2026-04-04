@@ -10,6 +10,7 @@ import com.javaclaw.core.channel.TaskProgressListener;
 import com.javaclaw.core.model.AgentDefinition;
 import com.javaclaw.core.model.AgentTask;
 import com.javaclaw.core.model.AuditEvent;
+import com.javaclaw.core.memory.MemoryService;
 import com.javaclaw.core.model.TaskStatus;
 import com.javaclaw.core.model.ToolDefinition;
 import com.javaclaw.core.policy.PolicyDecision;
@@ -34,22 +35,29 @@ public class AgentRuntime {
     private final PolicyEngine policyEngine;
     private final ApprovalHandler approvalHandler;
     private final int maxSteps;
+    private final MemoryService memoryService;
 
     public AgentRuntime(ChatClient chatClient, ToolRegistry toolRegistry, PolicyEngine policyEngine) {
-        this(chatClient, toolRegistry, policyEngine, new AutoApprovalHandler(), DEFAULT_MAX_STEPS);
+        this(chatClient, toolRegistry, policyEngine, new AutoApprovalHandler(), DEFAULT_MAX_STEPS, null);
     }
 
     public AgentRuntime(ChatClient chatClient, ToolRegistry toolRegistry, PolicyEngine policyEngine, int maxSteps) {
-        this(chatClient, toolRegistry, policyEngine, new AutoApprovalHandler(), maxSteps);
+        this(chatClient, toolRegistry, policyEngine, new AutoApprovalHandler(), maxSteps, null);
     }
 
     public AgentRuntime(ChatClient chatClient, ToolRegistry toolRegistry, PolicyEngine policyEngine,
                         ApprovalHandler approvalHandler, int maxSteps) {
+        this(chatClient, toolRegistry, policyEngine, approvalHandler, maxSteps, null);
+    }
+
+    public AgentRuntime(ChatClient chatClient, ToolRegistry toolRegistry, PolicyEngine policyEngine,
+                        ApprovalHandler approvalHandler, int maxSteps, MemoryService memoryService) {
         this.chatClient = chatClient;
         this.toolRegistry = toolRegistry;
         this.policyEngine = policyEngine;
         this.approvalHandler = approvalHandler;
         this.maxSteps = maxSteps;
+        this.memoryService = memoryService;
     }
 
     public AgentTask execute(AgentDefinition agent, AgentTask task) {
@@ -275,16 +283,27 @@ public class AgentRuntime {
     }
 
     private String buildSystemPrompt(AgentDefinition agent) {
-        return agent.systemPrompt() + "\n\n" +
-                toolRegistry.describeAll() + "\n" +
-                """
+        StringBuilder prompt = new StringBuilder();
+
+        if (memoryService != null) {
+            String memoryContext = memoryService.summarizeContext();
+            if (memoryContext != null && !memoryContext.isBlank()) {
+                prompt.append(memoryContext).append("\n\n");
+            }
+        }
+
+        prompt.append(agent.systemPrompt()).append("\n\n")
+                .append(toolRegistry.describeAll()).append("\n")
+                .append("""
                 You must respond ONLY with a JSON object in this exact format:
                 {"thought": "your reasoning", "action": "one of the available tools", "input": "<tool input>"}
 
                 Rules:
                 - "input" can be a plain string OR a JSON object, depending on what the tool expects.
                 - If a tool returns an ERROR, do NOT repeat the same call. Analyze the error and try a different approach or tool.
-                - Do not include any text outside the JSON object.""";
+                - Do not include any text outside the JSON object.""");
+
+        return prompt.toString();
     }
 
     private JsonNode parseResponse(String response) throws Exception {

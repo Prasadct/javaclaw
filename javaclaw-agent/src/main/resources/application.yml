@@ -9,6 +9,15 @@ spring:
         options:
           model: gpt-4o
           temperature: 0.2
+  datasource:
+    url: jdbc:h2:file:./javaclaw-data/memory;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true  # Dev only — disable in production profiles
+      path: /h2-console
 
 javaclaw:
   max-steps: 10

@@ -36,3 +36,6 @@ buildNumber.properties
 
 # Environment
 .env
+
+# H2 persistent memory data
+javaclaw-data/
